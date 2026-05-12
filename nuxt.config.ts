@@ -6,8 +6,18 @@ export default defineNuxtConfig({
 
   vite: {
     plugins: [tailwindcss()],
+    optimizeDeps: {
+      include: [
+        "@vueuse/core",
+        "class-variance-authority",
+        "clsx",
+        "lucide-vue-next",
+        "reka-ui",
+        "tailwind-merge",
+        "uuid",
+      ],
+    },
   },
-
   modules: ["shadcn-nuxt", "@pinia/nuxt"],
   shadcn: {
     /**
