@@ -4,7 +4,6 @@ type LLMMessage = {
 };
 
 type GenerateOptions = {
-  model?: string;
   temperature?: number;
   maxTokens?: number;
 };
