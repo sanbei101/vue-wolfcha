@@ -84,15 +84,6 @@ const humanRoleDescription = computed(() => {
         <Button class="w-full" @click="submitSpeech" :disabled="!humanInput.trim()"> 发言 </Button>
       </template>
 
-      <!-- 继续按钮 -->
-      <Button
-        v-if="phase !== 'SPEECH' && !canAct && phase !== 'GAME_OVER'"
-        class="w-full"
-        @click="emit('continue')"
-        :disabled="isProcessing"
-      >
-        {{ isProcessing ? "处理中..." : "继续" }}
-      </Button>
 
       <!-- 女巫行动 -->
       <template v-if="phase === 'NIGHT' && humanPlayer?.role === 'Witch' && canAct">

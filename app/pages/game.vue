@@ -188,7 +188,8 @@ async function executeDaySpeech() {
 
     if (speaker.isHuman) {
       currentPlayer.value = speaker;
-      return; // 等待人类输入
+      isProcessing.value = false;
+      return;
     }
 
     // AI 发言 - 显示思维链
@@ -578,16 +579,6 @@ function returnToLobby() {
               </div>
             </CardContent>
           </Card>
-
-          <!-- 继续按钮 -->
-          <Button
-            v-if="!canHumanAct && gameStore.phase !== 'GAME_OVER' && !isProcessing"
-            class="mt-4 w-full"
-            @click="continueGame"
-          >
-            <SkipForward class="mr-2 h-4 w-4" />
-            继续
-          </Button>
 
           <!-- 处理中 -->
           <div v-if="isProcessing" class="text-muted-foreground py-4 text-center text-sm">

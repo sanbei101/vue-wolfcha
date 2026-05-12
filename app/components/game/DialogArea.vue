@@ -179,7 +179,7 @@ const isHumanTurn = computed(() => {
 
         <!-- 继续按钮 -->
         <Button
-          v-else-if="!isTyping"
+          v-else-if="!isTyping && !((gameStore.phase === 'NIGHT' || gameStore.phase === 'VOTE') && gameStore.canHumanAct)"
           @click="onSkip"
           variant="outline"
           class="w-full"
