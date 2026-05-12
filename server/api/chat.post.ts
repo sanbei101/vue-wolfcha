@@ -1,12 +1,4 @@
-import { defineEventHandler, readBody } from "h3";
-
-type LLMProvider = "zenmux" | "dashscope" | "newapi";
-
-type ModelRef = {
-  provider: LLMProvider;
-  model: string;
-  temperature?: number;
-};
+import { defineEventHandler, readBody, createError } from "h3";
 
 type ChatMessage = {
   role: "system" | "user" | "assistant";
@@ -17,100 +9,128 @@ type ChatRequest = {
   model: string;
   messages: ChatMessage[];
   temperature?: number;
+  max_tokens?: number;
   stream?: boolean;
 };
 
 type ChatResponse = {
   content: string;
+  reasoning_details?: unknown;
   raw: unknown;
 };
 
-// 简单的消息处理
+// 处理响应内容，移除 markdown 代码块
 function processResponse(content: string): string {
-  // 移除 markdown 代码块标记
   return content
     .replace(/^```(?:json|markdown)?\s*/i, "")
     .replace(/\s*```$/i, "")
     .trim();
 }
 
-export default defineEventHandler(async (event) => {
-  const body = await readBody<ChatRequest>(event);
-
-  if (!body.messages || !Array.isArray(body.messages)) {
-    throw createError({
-      statusCode: 400,
-      message: "Invalid request: messages is required",
-    });
-  }
-
-  // 获取配置
-  const config = useRuntimeConfig();
-  const apiKey = config.zemuxApiKey || process.env.ZENMUX_API_KEY;
-  const baseUrl = config.zemuxBaseUrl || "https://api.zenmux.com";
-
-  if (!apiKey) {
-    // 如果没有 API key,返回模拟响应
-    return {
-      content: generateMockResponse(body.messages),
-      raw: {},
-    } satisfies ChatResponse;
-  }
+// 调用 DeepSeek API
+async function callDeepSeekApi(
+  apiKey: string,
+  baseUrl: string,
+  model: string,
+  messages: ChatMessage[],
+  temperature: number,
+  maxTokens?: number,
+): Promise<{ content: string; reasoning_details?: unknown }> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 60000);
 
   try {
-    const response = await $fetch<{
-      choices: Array<{ message: { content: string } }>;
-    }>(`${baseUrl}/v1/chat/completions`, {
+    const response = await fetch(`${baseUrl}/chat/completions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${apiKey}`,
       },
-      body: {
-        model: body.model || "deepseek/deepseek-v3.2",
-        messages: body.messages,
-        temperature: body.temperature ?? 0.8,
+      body: JSON.stringify({
+        model,
+        messages,
+        temperature,
+        max_tokens: maxTokens ?? 2000,
+        thinking: { type: "enabled" },
+        reasoning_effort: "high",
         stream: false,
-      },
+      }),
+      signal: controller.signal,
     });
 
-    const content = response.choices?.[0]?.message?.content || "";
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`DeepSeek API error: ${response.status} - ${errorText}`);
+    }
+
+    const result = (await response.json()) as {
+      choices: Array<{
+        message: {
+          content: string;
+          reasoning_details?: unknown;
+        };
+        finish_reason: string;
+      }>;
+    };
+
+    const choice = result.choices?.[0];
+    if (!choice?.message) {
+      throw new Error("No response from DeepSeek");
+    }
 
     return {
-      content: processResponse(content),
-      raw: response,
+      content: choice.message.content || "",
+      reasoning_details: choice.message.reasoning_details,
+    };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+export default defineEventHandler(async (event) => {
+  const config = useRuntimeConfig(event);
+  const body = await readBody<ChatRequest>(event);
+
+  if (!body.messages || !Array.isArray(body.messages)) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: "Invalid request: messages is required",
+    });
+  }
+
+  const apiKey = config.deepseekApiKey;
+  const baseUrl = config.public.deepseekBaseUrl;
+  const model = config.public.deepseekModel;
+
+  if (!apiKey) {
+    throw createError({
+      statusCode: 500,
+      statusMessage: "DeepSeek API key not configured",
+    });
+  }
+
+  try {
+    const result = await callDeepSeekApi(
+      apiKey,
+      baseUrl,
+      body.model || model,
+      body.messages,
+      body.temperature ?? 0.8,
+      body.max_tokens,
+    );
+
+    return {
+      content: processResponse(result.content),
+      reasoning_details: result.reasoning_details,
+      raw: result,
     } satisfies ChatResponse;
   } catch (err) {
-    // 错误处理
     const errorMessage = err instanceof Error ? err.message : "Unknown error";
     console.error("[chat API] Error:", errorMessage);
 
     throw createError({
       statusCode: 500,
-      message: `LLM API error: ${errorMessage}`,
+      statusMessage: `LLM API error: ${errorMessage}`,
     });
   }
 });
-
-function generateMockResponse(messages: ChatMessage[]): string {
-  // 获取最后一条用户消息
-  const lastUserMessage = [...messages].reverse().find((m) => m.role === "user");
-
-  if (!lastUserMessage) {
-    return "(沉默...)";
-  }
-
-  // 简单的模拟响应
-  const responses = [
-    "让我想想...",
-    "这个观点很有趣。",
-    "我同意你的看法。",
-    "我们需要仔细分析局势。",
-    "我认为应该先观察一下。",
-    "让我发表一下我的看法。",
-    "根据目前的线索...",
-    "这个玩家可能有问题。",
-  ];
-
-  return responses[Math.floor(Math.random() * responses.length)] || "(沉默...)";
-}

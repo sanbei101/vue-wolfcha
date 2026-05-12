@@ -32,6 +32,7 @@ function createInitialState(): GameState {
     votes: {},
     deaths: [],
     winner: null,
+    seerResults: [],
   };
 }
 
@@ -266,6 +267,11 @@ export const useGameStore = defineStore("game", {
 
     setNightAction(action: Partial<NightActions>) {
       Object.assign(this.nightActions, action);
+
+      // 保存预言家查验结果
+      if (action.seerResult) {
+        this.seerResults.push(action.seerResult);
+      }
     },
 
     resolveNight() {

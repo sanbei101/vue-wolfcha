@@ -1,5 +1,3 @@
-import type { ChatMessage } from "~/types/game";
-
 type LLMMessage = {
   role: "system" | "user" | "assistant";
   content: string;
@@ -20,7 +18,6 @@ export function useLLM() {
       const response = (await $fetch("/api/chat", {
         method: "POST",
         body: {
-          model: options.model || "deepseek/deepseek-v3.2",
           messages,
           temperature: options.temperature ?? 0.8,
           max_tokens: options.maxTokens ?? 2000,

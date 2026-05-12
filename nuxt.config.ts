@@ -33,4 +33,11 @@ export default defineNuxtConfig({
      */
     componentDir: "@/components/ui",
   },
+  runtimeConfig: {
+    deepseekApiKey: "",
+    public: {
+      deepseekBaseUrl: "",
+      deepseekModel: "",
+    },
+  },
 });

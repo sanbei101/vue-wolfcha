@@ -97,6 +97,7 @@ export type GameState = {
   votes: Record<string, number>;
   deaths: Array<{ seat: number; reason: DeathReason }>;
   winner: Alignment | null;
+  seerResults: Array<{ targetSeat: number; isWolf: boolean }>;
 };
 
 // ============ 游戏配置 ============
