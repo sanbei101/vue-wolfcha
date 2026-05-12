@@ -377,7 +377,7 @@ function returnToLobby() {
           <component
             :is="currentPhaseIcon"
             class="h-6 w-6"
-            :class="isNight ? 'text-slate-400' : 'text-amber-500'"
+            :class="isNight ? 'text-muted-foreground' : 'text-primary'"
           />
           <span class="text-foreground text-lg font-semibold">{{ phaseInfo.label }}</span>
           <Badge v-if="gameStore.phase !== 'LOBBY'" variant="secondary" class="text-xs">
@@ -404,7 +404,7 @@ function returnToLobby() {
     <!-- 阶段提示 -->
     <div
       class="border-border px-4 py-2 text-center text-sm"
-      :class="isNight ? 'bg-slate-900 text-slate-400' : 'bg-amber-50 text-slate-600'"
+      :class="isNight ? 'bg-muted text-muted-foreground' : 'bg-muted dark:bg-muted text-foreground'"
     >
       {{ phaseInfo.desc }}
     </div>
@@ -438,12 +438,12 @@ function returnToLobby() {
                     !player.alive && 'opacity-50 grayscale',
                     canClickPlayer && player.alive && 'hover:bg-muted cursor-pointer',
                     gameStore.currentSpeakerSeat === player.seat &&
-                      'bg-amber-500/10 ring-2 ring-amber-500',
+                      'bg-primary/10 ring-primary ring-2',
                   ]"
                   @click="handlePlayerClick(player.seat)"
                 >
                   <Avatar class="h-10 w-10">
-                    <AvatarFallback class="bg-amber-900/50 text-amber-500">
+                    <AvatarFallback class="bg-primary/50 text-primary-foreground">
                       {{ player.seat + 1 }}
                     </AvatarFallback>
                   </Avatar>
@@ -452,7 +452,7 @@ function returnToLobby() {
                     <div class="flex items-center gap-1">
                       <span
                         class="text-foreground truncate text-sm font-medium"
-                        :class="player.isHuman && 'text-amber-500'"
+                        :class="player.isHuman && 'text-primary'"
                       >
                         {{ player.displayName }}
                       </span>
@@ -469,7 +469,7 @@ function returnToLobby() {
                   <!-- 预言家查验结果 -->
                   <div
                     v-if="gameStore.nightActions.seerResult?.targetSeat === player.seat"
-                    class="absolute -top-1 -right-1 rounded-full bg-blue-500 px-1.5 py-0.5 text-[10px] font-bold text-white"
+                    class="bg-accent text-accent-foreground absolute -top-1 -right-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold"
                   >
                     {{ gameStore.nightActions.seerResult.isWolf ? "狼" : "好" }}
                   </div>
@@ -481,7 +481,7 @@ function returnToLobby() {
           <!-- 女巫行动面板 -->
           <Card v-if="humanPlayer?.role === 'Witch' && gameStore.phase === 'NIGHT'" class="mt-4">
             <CardHeader class="pb-2">
-              <CardTitle class="text-sm text-purple-500">女巫行动</CardTitle>
+              <CardTitle class="text-primary text-sm">女巫行动</CardTitle>
             </CardHeader>
             <CardContent class="space-y-2">
               <div
@@ -522,11 +522,11 @@ function returnToLobby() {
           <!-- 守卫行动面板 -->
           <Card v-if="humanPlayer?.role === 'Guard' && gameStore.phase === 'NIGHT'" class="mt-4">
             <CardHeader class="pb-2">
-              <CardTitle class="text-sm text-green-500">守卫行动</CardTitle>
+              <CardTitle class="text-primary text-sm">守卫行动</CardTitle>
             </CardHeader>
             <CardContent>
               <p class="text-muted-foreground mb-2 text-sm">点击要保护的玩家</p>
-              <div class="text-xs text-slate-500">
+              <div class="text-muted-foreground text-xs">
                 上一晚保护了:
                 {{
                   gameStore.nightActions.lastGuardTarget !== undefined
@@ -562,16 +562,13 @@ function returnToLobby() {
                   <div class="space-y-3">
                     <template v-for="msg in gameStore.messages" :key="msg.id">
                       <div v-if="msg.isSystem" class="py-2 text-center">
-                        <span class="text-sm text-slate-500">{{ msg.content }}</span>
+                        <span class="text-muted-foreground text-sm">{{ msg.content }}</span>
                       </div>
                       <div v-else class="flex gap-2">
-                        <span class="shrink-0 text-sm font-medium text-amber-500"
+                        <span class="text-primary shrink-0 text-sm font-medium"
                           >{{ msg.playerName }}:</span
                         >
-                        <span
-                          class="text-sm text-slate-300"
-                          :class="msg.isLastWords && 'text-orange-400 italic'"
-                        >
+                        <span class="text-foreground text-sm">
                           {{ msg.content }}
                         </span>
                       </div>
@@ -593,13 +590,15 @@ function returnToLobby() {
           </Button>
 
           <!-- 处理中 -->
-          <div v-if="isProcessing" class="py-4 text-center text-sm text-slate-500">处理中...</div>
+          <div v-if="isProcessing" class="text-muted-foreground py-4 text-center text-sm">
+            处理中...
+          </div>
 
           <!-- 游戏结束 -->
           <div v-if="gameStore.phase === 'GAME_OVER'" class="mt-4 py-4 text-center">
             <p
               class="mb-2 text-2xl font-bold"
-              :class="gameStore.winner === 'wolf' ? 'text-red-500' : 'text-green-500'"
+              :class="gameStore.winner === 'wolf' ? 'text-destructive' : 'text-primary'"
             >
               {{ gameStore.winner === "wolf" ? "狼人胜利！" : "好人胜利！" }}
             </p>

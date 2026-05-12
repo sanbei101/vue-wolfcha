@@ -57,22 +57,22 @@ const isHumanTurn = computed(() => {
       <div class="relative flex flex-col items-center">
         <!-- 光晕效果 -->
         <div
-          class="absolute bottom-[10%] left-1/2 -translate-x-1/2 w-32 h-32 bg-gradient-radial from-amber-500/20 via-transparent to-transparent rounded-full blur-2xl"
+          class="absolute bottom-[10%] left-1/2 -translate-x-1/2 w-32 h-32 bg-gradient-radial from-primary/20 via-transparent to-transparent rounded-full blur-2xl"
         />
 
         <!-- 头像/立绘 -->
         <Avatar
           v-if="currentSpeaker"
-          class="w-45 h-45 border-4 border-amber-500/30"
+          class="w-45 h-45 border-4 border-primary/30"
         >
-          <AvatarFallback class="bg-amber-900/50 text-5xl">
+          <AvatarFallback class="bg-primary/50 text-5xl text-primary-foreground">
             {{ currentSpeaker.displayName.slice(0, 2) }}
           </AvatarFallback>
         </Avatar>
 
         <!-- 角色名 -->
         <div v-if="currentSpeaker" class="mt-3 text-center">
-          <div class="text-amber-500 font-bold text-lg font-serif tracking-wide">
+          <div class="text-primary font-bold text-lg font-serif tracking-wide">
             {{ currentSpeaker.displayName }}
           </div>
           <Badge variant="outline" class="mt-1 text-xs">
@@ -96,29 +96,28 @@ const isHumanTurn = computed(() => {
             >
               <!-- 头像 -->
               <Avatar class="w-8 h-8 shrink-0">
-                <AvatarFallback class="bg-amber-900/50 text-xs">
+                <AvatarFallback class="bg-muted text-xs text-muted-foreground">
                   {{ msg.playerName.slice(0, 2) }}
                 </AvatarFallback>
               </Avatar>
 
               <div class="min-w-0 flex-1">
                 <div class="flex items-center gap-2 mb-1">
-                  <span class="text-amber-500 text-sm font-semibold">{{
+                  <span class="text-primary text-sm font-semibold">{{
                     msg.playerName
                   }}</span>
-                  <span class="text-slate-500 text-xs">{{ msg.isLastWords ? "(遗言)" : "" }}</span>
+                  <span class="text-muted-foreground text-xs">{{ msg.isLastWords ? "(遗言)" : "" }}</span>
                 </div>
                 <p
-                  class="text-slate-200 text-sm leading-relaxed"
-                  :class="{ 'italic text-orange-400': msg.isLastWords }"
-                >
+                  class="text-foreground text-sm leading-relaxed">
+                                  >
                   {{ msg.content }}
                 </p>
               </div>
             </div>
 
             <!-- 分隔线 -->
-            <div v-if="visibleMessages.length > 0" class="border-t border-slate-700/50" />
+            <div v-if="visibleMessages.length > 0" class="border-t border-border" />
           </div>
         </ScrollArea>
       </div>
@@ -130,13 +129,13 @@ const isHumanTurn = computed(() => {
         <!-- 思维链显示 -->
         <div
           v-if="reasoningContent"
-          class="mb-4 p-3 rounded-lg bg-slate-800/50 border border-slate-700/50"
+          class="mb-4 p-3 rounded-lg bg-muted border border-border"
         >
           <div class="flex items-center gap-2 mb-2">
-            <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-            <span class="text-green-400 text-xs font-medium">思维过程</span>
+            <span class="w-2 h-2 bg-primary rounded-full animate-pulse" />
+            <span class="text-primary text-xs font-medium">思维过程</span>
           </div>
-          <p class="text-slate-400 text-sm leading-relaxed whitespace-pre-wrap">
+          <p class="text-muted-foreground text-sm leading-relaxed whitespace-pre-wrap">
             {{ reasoningContent }}
           </p>
         </div>
@@ -144,19 +143,19 @@ const isHumanTurn = computed(() => {
         <!-- 当前对话 -->
         <div
           v-if="currentText || isTyping"
-          class="mb-4 p-4 rounded-lg bg-amber-900/20 border border-amber-500/30"
+          class="mb-4 p-4 rounded-lg bg-primary/20 border border-primary/30"
         >
           <div class="flex items-center gap-2 mb-2">
-            <span class="text-amber-500 text-sm font-semibold">
+            <span class="text-primary text-sm font-semibold">
               {{ currentSpeaker?.displayName || humanPlayer?.displayName }}
             </span>
             <Badge v-if="currentSpeaker?.isHuman" variant="outline" class="text-xs">
               你
             </Badge>
           </div>
-          <p class="text-slate-200 text-base leading-relaxed">
+          <p class="text-foreground text-base leading-relaxed">
             {{ currentText || "思考中..." }}
-            <span v-if="isTyping" class="inline-block w-2 h-4 bg-amber-500 animate-pulse ml-1" />
+            <span v-if="isTyping" class="inline-block w-2 h-4 bg-primary animate-pulse ml-1" />
           </p>
         </div>
 
@@ -168,7 +167,7 @@ const isHumanTurn = computed(() => {
             @keydown.enter.exact.prevent="onSubmit"
             placeholder="输入你的发言... (Enter 发送)"
             rows="3"
-            class="w-full bg-slate-800/50 border border-slate-700 rounded-lg p-3 text-slate-200 placeholder-slate-500 resize-none focus:outline-none focus:ring-2 focus:ring-amber-500/50"
+            class="w-full bg-muted border border-border rounded-lg p-3 text-foreground placeholder-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-primary/50"
           />
           <div class="flex gap-2">
             <Button @click="onSubmit" :disabled="!humanInput.trim()" class="flex-1">
@@ -189,7 +188,7 @@ const isHumanTurn = computed(() => {
         </Button>
 
         <!-- 等待中 -->
-        <div v-else class="text-center text-slate-500 text-sm py-2">
+        <div v-else class="text-center text-muted-foreground text-sm py-2">
           等待 AI 发言...
         </div>
       </div>
