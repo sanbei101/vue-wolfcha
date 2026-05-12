@@ -3,25 +3,13 @@ type LLMMessage = {
   content: string;
 };
 
-type GenerateOptions = {
-  temperature?: number;
-  maxTokens?: number;
-};
-
 export function useLLM() {
-  async function generateCompletion(
-    messages: LLMMessage[],
-    options: GenerateOptions = {},
-  ): Promise<string> {
+  async function generateCompletion(messages: LLMMessage[]): Promise<string> {
     try {
       const response = (await $fetch("/api/chat", {
         method: "POST",
-        body: {
-          messages,
-          temperature: options.temperature ?? 0.8,
-          max_tokens: options.maxTokens ?? 2000,
-        },
-      })) as unknown as { content: string; raw: unknown };
+        body: { messages },
+      })) as { content: string };
 
       return response.content;
     } catch (err) {
@@ -49,10 +37,7 @@ export function useLLM() {
       { role: "user", content: userMessage },
     ];
 
-    return generateCompletion(messages, {
-      temperature: 0.8,
-      maxTokens: 500,
-    });
+    return generateCompletion(messages);
   }
 
   async function generateNightAction(role: string, gameState: string): Promise<string> {
@@ -71,10 +56,7 @@ export function useLLM() {
       { role: "user", content: userMessage },
     ];
 
-    return generateCompletion(messages, {
-      temperature: 0.3,
-      maxTokens: 100,
-    });
+    return generateCompletion(messages);
   }
 
   async function generateVote(gameState: string, eligibleTargets: number[]): Promise<number> {
@@ -91,21 +73,17 @@ export function useLLM() {
       { role: "user", content: userMessage },
     ];
 
-    const result = await generateCompletion(messages, {
-      temperature: 0.3,
-      maxTokens: 50,
-    });
+    const result = await generateCompletion(messages);
 
     // 解析座位号
     const match = result.match(/\d+/);
     if (match) {
-      const seat = parseInt(match[0], 10) - 1; // 转换为 0-indexed
+      const seat = parseInt(match[0], 10) - 1;
       if (eligibleTargets.includes(seat)) {
         return seat;
       }
     }
 
-    // 默认返回第一个有效目标
     return eligibleTargets[0] ?? 0;
   }
 

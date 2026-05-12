@@ -6,86 +6,8 @@ type ChatMessage = {
 };
 
 type ChatRequest = {
-  model: string;
   messages: ChatMessage[];
-  temperature?: number;
-  max_tokens?: number;
-  stream?: boolean;
 };
-
-type ChatResponse = {
-  content: string;
-  reasoning_details?: unknown;
-  raw: unknown;
-};
-
-// 处理响应内容，移除 markdown 代码块
-function processResponse(content: string): string {
-  return content
-    .replace(/^```(?:json|markdown)?\s*/i, "")
-    .replace(/\s*```$/i, "")
-    .trim();
-}
-
-// 调用 DeepSeek API
-async function callDeepSeekApi(
-  apiKey: string,
-  baseUrl: string,
-  model: string,
-  messages: ChatMessage[],
-  temperature: number,
-  maxTokens?: number,
-): Promise<{ content: string; reasoning_details?: unknown }> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 60000);
-
-  try {
-    const response = await fetch(`${baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        messages,
-        temperature,
-        max_tokens: maxTokens ?? 2000,
-        thinking: { type: "enabled" },
-        reasoning_effort: "high",
-        stream: false,
-      }),
-      signal: controller.signal,
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`DeepSeek API error: ${response.status} - ${errorText}`);
-    }
-
-    const result = (await response.json()) as {
-      choices: Array<{
-        message: {
-          content: string;
-          reasoning_details?: unknown;
-        };
-        finish_reason: string;
-      }>;
-    };
-
-    const choice = result.choices?.[0];
-    if (!choice?.message) {
-      throw new Error("No response from DeepSeek");
-    }
-
-    return {
-      content: choice.message.content || "",
-      reasoning_details: choice.message.reasoning_details,
-    };
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
 
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig(event);
@@ -109,28 +31,48 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  try {
-    const result = await callDeepSeekApi(
-      apiKey,
-      baseUrl,
-      body.model || model,
-      body.messages,
-      body.temperature ?? 0.8,
-      body.max_tokens,
-    );
+  console.log("[chat API] Request messages:", JSON.stringify(body.messages, null, 2));
 
-    return {
-      content: processResponse(result.content),
-      reasoning_details: result.reasoning_details,
-      raw: result,
-    } satisfies ChatResponse;
-  } catch (err) {
-    const errorMessage = err instanceof Error ? err.message : "Unknown error";
-    console.error("[chat API] Error:", errorMessage);
+  const response = await fetch(`${baseUrl}/chat/completions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages: body.messages,
+      thinking: { type: "enabled" },
+      reasoning_effort: "high",
+    }),
+  });
 
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error("[chat API] Error:", response.status, errorText);
     throw createError({
       statusCode: 500,
-      statusMessage: `LLM API error: ${errorMessage}`,
+      statusMessage: `DeepSeek API error: ${response.status} - ${errorText}`,
     });
   }
+
+  const result = (await response.json()) as {
+    choices: Array<{
+      message: {
+        content: string;
+        reasoning_content: string;
+      };
+    }>;
+  };
+
+  const choice = result.choices?.[0]?.message;
+  const content = choice?.content || "";
+  const reasoning_content = choice?.reasoning_content || "";
+
+  console.log("[chat API] Response:", JSON.stringify({ content, reasoning_content }, null, 2));
+
+  return {
+    content,
+    reasoning_content,
+  };
 });
