@@ -1,36 +1,35 @@
-type LLMMessage = {
+export type LLMMessage = {
   role: "system" | "user" | "assistant";
   content: string;
 };
 
-export function useLLM() {
-  async function generateCompletion(messages: LLMMessage[]): Promise<string> {
-    try {
-      const response = (await $fetch("/api/chat", {
-        method: "POST",
-        body: { messages },
-      })) as { content: string };
+export type LLMResponse = {
+  content: string;
+  reasoning_content: string;
+};
 
-      return response.content;
-    } catch (err) {
-      console.error("[useLLM] generateCompletion error:", err);
-      throw err;
-    }
+export function useLLM() {
+  async function generateCompletion(messages: LLMMessage[]): Promise<LLMResponse> {
+    const response = await $fetch<LLMResponse>("/api/chat", {
+      method: "POST",
+      body: { messages },
+    });
+    return response;
   }
 
   async function generateSpeech(
     role: string,
     context: string,
     playerName: string,
-  ): Promise<string> {
+  ): Promise<LLMResponse> {
     const systemPrompt = `你是一个狼人杀游戏中的玩家 "${playerName}",角色是 ${role}。
-    请根据游戏情境,生成符合角色性格的发言。
-    发言要简洁、自然,符合狼人杀游戏的风格。
-    不要输出任何标记或特殊格式,只输出发言内容。`;
+请根据游戏情境,生成符合角色性格的发言。
+发言要简洁、自然,符合狼人杀游戏的风格。
+不要输出任何标记或特殊格式,只输出发言内容。`;
 
     const userMessage = `当前游戏情境:${context}
 
-    请生成玩家 "${playerName}" 的发言:`;
+请生成玩家 "${playerName}" 的发言:`;
 
     const messages: LLMMessage[] = [
       { role: "system", content: systemPrompt },
@@ -40,14 +39,14 @@ export function useLLM() {
     return generateCompletion(messages);
   }
 
-  async function generateNightAction(role: string, gameState: string): Promise<string> {
+  async function generateNightAction(role: string, gameState: string): Promise<LLMResponse> {
     const systemPrompt = `你是一个狼人杀游戏中的玩家,角色是 ${role}。
-    请根据当前游戏状态,选择你的夜晚行动。
-    狼人:选择要击杀的目标(输出座位号)
-    预言家:选择要查验的目标(输出座位号)
-    女巫:决定是否救人或毒人(输出 save/poison/pass)
-    守卫:选择要保护的目标(输出座位号)
-    只输出数字或指令,不要其他内容。`;
+请根据当前游戏状态,选择你的夜晚行动。
+狼人:选择要击杀的目标(输出座位号)
+预言家:选择要查验的目标(输出座位号)
+女巫:决定是否救人或毒人(输出 save/poison/pass)
+守卫:选择要保护的目标(输出座位号)
+只输出数字或指令,不要其他内容。`;
 
     const userMessage = `当前游戏状态:${gameState}\n\n你的行动是:`;
 
@@ -61,12 +60,12 @@ export function useLLM() {
 
   async function generateVote(gameState: string, eligibleTargets: number[]): Promise<number> {
     const systemPrompt = `你是一个狼人杀游戏中的玩家。
-    请根据当前游戏状态,选择要投票的目标。
-    只输出座位号(数字),不要其他内容。`;
+请根据当前游戏状态,选择要投票的目标。
+只输出座位号(数字),不要其他内容。`;
 
     const userMessage = `当前游戏状态:${gameState}
-    可以投票的目标座位:${eligibleTargets.join(", ")}
-    你的投票是(只输出数字):`;
+可以投票的目标座位:${eligibleTargets.join(", ")}
+你的投票是(只输出数字):`;
 
     const messages: LLMMessage[] = [
       { role: "system", content: systemPrompt },
@@ -76,7 +75,7 @@ export function useLLM() {
     const result = await generateCompletion(messages);
 
     // 解析座位号
-    const match = result.match(/\d+/);
+    const match = result.content.match(/\d+/);
     if (match) {
       const seat = parseInt(match[0], 10) - 1;
       if (eligibleTargets.includes(seat)) {

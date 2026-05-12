@@ -169,7 +169,7 @@ export function useGame() {
     const result = await generateNightAction("狼人", gameState);
 
     // 解析座位号
-    const seatNum = parseInt(result.trim(), 10);
+    const seatNum = parseInt(result.content.trim(), 10);
     if (!isNaN(seatNum) && seatNum >= 1 && seatNum <= gameStore.players.length) {
       const seatIndex = seatNum - 1;
       const player = gameStore.players.find((p) => p.seat === seatIndex);
@@ -196,7 +196,7 @@ export function useGame() {
     const gameState = buildGameStateForNight("Seer");
     const result = await generateNightAction("预言家", gameState);
 
-    const seatNum = parseInt(result.trim(), 10);
+    const seatNum = parseInt(result.content.trim(), 10);
     if (!isNaN(seatNum) && seatNum >= 1 && seatNum <= gameStore.players.length) {
       const seatIndex = seatNum - 1;
       const player = gameStore.players.find((p) => p.seat === seatIndex);
@@ -239,7 +239,7 @@ export function useGame() {
     const actionResult = await generateNightAction("女巫", gameState);
 
     // 解析女巫行动
-    const lowerResult = actionResult.toLowerCase().trim();
+    const lowerResult = actionResult.content.toLowerCase().trim();
     if (lowerResult === "save" || lowerResult === "救") {
       if (wolfTarget !== undefined && !gameStore.roleAbilities.witchHealUsed) {
         result.witchSave = true;
@@ -248,7 +248,7 @@ export function useGame() {
       // 不救人
     } else {
       // 尝试解析座位号(可能是毒人)
-      const seatNum = parseInt(actionResult.trim(), 10);
+      const seatNum = parseInt(actionResult.content.trim(), 10);
       if (!isNaN(seatNum) && seatNum >= 1 && seatNum <= gameStore.players.length) {
         const seatIndex = seatNum - 1;
         const player = gameStore.players.find((p) => p.seat === seatIndex);
@@ -293,7 +293,7 @@ export function useGame() {
     const gameState = buildGameStateForNight("Guard");
     const result = await generateNightAction("守卫", gameState);
 
-    const seatNum = parseInt(result.trim(), 10);
+    const seatNum = parseInt(result.content.trim(), 10);
     if (!isNaN(seatNum) && seatNum >= 1 && seatNum <= gameStore.players.length) {
       const seatIndex = seatNum - 1;
       const player = gameStore.players.find((p) => p.seat === seatIndex);
@@ -334,7 +334,8 @@ export function useGame() {
 
   async function generateAISpeech(player: Player): Promise<string> {
     const context = buildSpeechContext();
-    return generateSpeech(player.role, context, player.displayName);
+    const result = await generateSpeech(player.role, context, player.displayName);
+    return result.content;
   }
 
   function buildSpeechContext(): string {

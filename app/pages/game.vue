@@ -1,19 +1,20 @@
 <script setup lang="ts">
-import { Moon, Sun, Users, Vote, Skull, ChevronLeft, SkipForward } from "lucide-vue-next";
+import { Moon, Sun, ChevronLeft, SkipForward, Eye } from "lucide-vue-next";
 import { computed, onMounted, ref, watch, nextTick } from "vue";
 import { useRouter } from "vue-router";
 
+import DialogArea from "~/components/game/DialogArea.vue";
 import { Avatar, AvatarFallback } from "~/components/ui/avatar";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "~/components/ui/dialog";
-import { Input } from "~/components/ui/input";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { Separator } from "~/components/ui/separator";
 import { useGame } from "~/composables/useGame";
+import { useLLM } from "~/composables/useLLM";
 import { useGameStore } from "~/stores/game";
 import { getRoleDisplayName } from "~/types/game";
+import type { Player } from "~/types/game";
 
 const router = useRouter();
 const gameStore = useGameStore();
@@ -24,23 +25,18 @@ const humanInput = ref("");
 const showRole = ref(false);
 const chatScrollRef = ref<HTMLElement | null>(null);
 
+// 当前显示的文字和思维链
+const currentText = ref("");
+const reasoningContent = ref("");
+const isTyping = ref(false);
+const currentPlayer = ref<Player | null>(null);
+
 // 跳转到大厅如果没在游戏中
 onMounted(() => {
   if (gameStore.phase === "LOBBY") {
     router.push("/");
   }
 });
-
-// 自动滚动聊天
-watch(
-  () => gameStore.messages.length,
-  async () => {
-    await nextTick();
-    if (chatScrollRef.value) {
-      chatScrollRef.value.scrollTop = chatScrollRef.value.scrollHeight;
-    }
-  },
-);
 
 // ============ 计算属性 ============
 
@@ -50,66 +46,20 @@ const phaseInfo = computed(() => {
   const phaseLabels: Record<string, { label: string; desc: string; icon: typeof Moon }> = {
     NIGHT: { label: "夜晚", desc: "狼人请睁眼...", icon: Moon },
     DAY_START: { label: "白天", desc: "天亮了，请等待...", icon: Sun },
-    SPEECH: { label: "发言", desc: "请按顺序发言", icon: Users },
-    VOTE: { label: "投票", desc: "请投票放逐嫌疑人", icon: Vote },
-    LAST_WORDS: { label: "遗言", desc: "临终遗言", icon: Skull },
-    HUNTER_SHOOT: { label: "猎人", desc: "猎人请选择目标", icon: Skull },
-    GAME_OVER: { label: "游戏结束", desc: "", icon: Skull },
+    SPEECH: { label: "发言", desc: "请按顺序发言", icon: Sun },
+    VOTE: { label: "投票", desc: "请投票放逐嫌疑人", icon: Sun },
+    LAST_WORDS: { label: "遗言", desc: "临终遗言", icon: Moon },
+    HUNTER_SHOOT: { label: "猎人", desc: "猎人请选择目标", icon: Moon },
+    GAME_OVER: { label: "游戏结束", desc: "", icon: Moon },
   };
   return phaseLabels[gameStore.phase] || { label: "", desc: "", icon: Moon };
 });
 
 const currentPhaseIcon = computed(() => phaseInfo.value.icon);
-
 const humanPlayer = computed(() => gameStore.humanPlayer);
 
-// 人类是否可以操作
-const canHumanAct = computed(() => {
-  if (!humanPlayer.value || !humanPlayer.value.alive) return false;
-
-  if (gameStore.phase === "NIGHT") {
-    const role = humanPlayer.value.role;
-    switch (role) {
-      case "Werewolf":
-        return gameStore.nightActions.wolfTarget === undefined;
-      case "Seer":
-        return gameStore.nightActions.seerTarget === undefined;
-      case "Guard":
-        return gameStore.nightActions.guardTarget === undefined;
-      case "Witch":
-        const canSave =
-          !gameStore.roleAbilities.witchHealUsed && gameStore.nightActions.wolfTarget !== undefined;
-        return canSave || !gameStore.roleAbilities.witchPoisonUsed;
-      default:
-        return false;
-    }
-  }
-
-  if (gameStore.phase === "SPEECH") {
-    return gameStore.currentSpeakerSeat === humanPlayer.value.seat;
-  }
-
-  if (gameStore.phase === "VOTE") {
-    return gameStore.votes[humanPlayer.value.playerId] === undefined;
-  }
-
-  if (gameStore.phase === "HUNTER_SHOOT" && humanPlayer.value.role === "Hunter") {
-    return gameStore.roleAbilities.hunterCanShoot;
-  }
-
-  return false;
-});
-
-// 人类是否可以点击玩家
-const canClickPlayer = computed(() => {
-  if (!canHumanAct.value) return false;
-
-  if (gameStore.phase === "NIGHT") {
-    const role = humanPlayer.value?.role;
-    return role === "Werewolf" || role === "Seer" || role === "Guard" || role === "Witch";
-  }
-
-  return gameStore.phase === "VOTE";
+const isHumanTurn = computed(() => {
+  return humanPlayer.value && gameStore.currentSpeakerSeat === humanPlayer.value.seat;
 });
 
 // ============ 玩家选择 ============
@@ -117,9 +67,6 @@ const canClickPlayer = computed(() => {
 function handlePlayerClick(seat: number) {
   if (!canClickPlayer.value) return;
   if (!humanPlayer.value?.alive) return;
-
-  const targetPlayer = gameStore.players.find((p) => p.seat === seat);
-  if (!targetPlayer || !targetPlayer.alive) return;
 
   switch (gameStore.phase) {
     case "NIGHT":
@@ -158,27 +105,6 @@ function handleVote(seat: number) {
   gameStore.castVote(humanPlayer.value.playerId, seat);
 }
 
-// ============ 女巫行动 ============
-
-function witchSave() {
-  gameStore.setNightAction({ witchSave: true });
-}
-
-function witchPass() {
-  gameStore.setNightAction({ witchSave: false });
-}
-
-// ============ 猎人开枪 ============
-
-function hunterShoot(seat: number) {
-  gameStore.hunterShoot(seat);
-}
-
-function hunterPass() {
-  gameStore.hunterShoot(null);
-  gameStore.nextPhase();
-}
-
 // ============ 发言 ============
 
 function submitSpeech() {
@@ -186,6 +112,8 @@ function submitSpeech() {
   gameStore.addPlayerMessage(humanPlayer.value.playerId, humanInput.value.trim());
   humanInput.value = "";
   gameStore.nextSpeaker();
+  currentText.value = "";
+  reasoningContent.value = "";
 }
 
 // ============ 游戏流程 ============
@@ -201,19 +129,20 @@ async function continueGame() {
     switch (gameStore.phase) {
       case "NIGHT":
         if (
-          canHumanAct.value &&
+          humanPlayer.value?.alive &&
           humanPlayer.value?.role !== "Villager" &&
           humanPlayer.value?.role !== "Hunter"
         ) {
-          return;
+          return; // 等待人类行动
         }
+        // AI 夜晚行动
         await executeNightActions();
         gameStore.setPhase("DAY_START");
         break;
 
       case "DAY_START":
-        if (gameStore.deaths.length > 0) {
-          const deaths = gameStore.deaths;
+        const deaths = gameStore.deaths;
+        if (deaths.length > 0) {
           const names = deaths
             .map((d) => gameStore.players.find((p) => p.seat === d.seat)?.displayName)
             .filter(Boolean)
@@ -228,38 +157,18 @@ async function continueGame() {
         break;
 
       case "SPEECH":
-        if (gameStore.currentSpeakerSeat !== null) return;
-        gameStore.setPhase("VOTE");
+        // AI 发言
+        await executeDaySpeech();
         break;
 
       case "VOTE":
-        const voteResult = gameStore.resolveVote();
-        if (voteResult === null) {
-          gameStore.addSystemMessage("投票平票，无人出局");
-          gameStore.setPhase("SPEECH");
-          gameStore.startDaySpeech();
-        } else {
-          const player = gameStore.players.find((p) => p.seat === voteResult);
-          gameStore.addSystemMessage(`${player?.displayName || "未知"}被投票出局`);
-          if (player) player.alive = false;
-
-          if (player?.role === "Hunter") {
-            gameStore.setPhase("HUNTER_SHOOT");
-          } else {
-            gameStore.day++;
-            gameStore.setPhase("NIGHT");
-          }
-        }
+        // AI 投票
+        await executeVote();
         break;
 
       case "HUNTER_SHOOT":
         if (humanPlayer.value?.role === "Hunter" && gameStore.roleAbilities.hunterCanShoot) {
-          return;
-        }
-        const alivePlayers = gameStore.alivePlayers;
-        if (alivePlayers.length > 0 && humanPlayer.value?.role !== "Hunter") {
-          const target = alivePlayers[Math.floor(Math.random() * alivePlayers.length)]!;
-          gameStore.hunterShoot(target.seat);
+          return; // 等待猎人行动
         }
         gameStore.nextPhase();
         break;
@@ -268,6 +177,185 @@ async function continueGame() {
     isProcessing.value = false;
   }
 }
+
+// ============ AI 发言逻辑 ============
+
+async function executeDaySpeech() {
+  // 逐个让 AI 发言
+  while (gameStore.currentSpeakerSeat !== null) {
+    const speaker = gameStore.currentSpeaker;
+    if (!speaker) break;
+
+    if (speaker.isHuman) {
+      currentPlayer.value = speaker;
+      return; // 等待人类输入
+    }
+
+    // AI 发言 - 显示思维链
+    currentPlayer.value = speaker;
+    isTyping.value = true;
+    reasoningContent.value = "";
+
+    try {
+      // 生成发言
+      const { generateSpeech } = useLLM();
+      const context = buildSpeechContext();
+      const result = await generateSpeech(speaker.role, context, speaker.displayName);
+
+      // 显示思维链和内容
+      currentText.value = result.content;
+      reasoningContent.value = result.reasoning_content || "";
+
+      // 添加到消息
+      gameStore.addPlayerMessage(speaker.playerId, result.content);
+
+      // 清空
+      currentText.value = "";
+      reasoningContent.value = "";
+      isTyping.value = false;
+
+      // 下一位
+      gameStore.nextSpeaker();
+    } catch (err) {
+      console.error("AI speech error:", err);
+      isTyping.value = false;
+      currentText.value = "...";
+      gameStore.addPlayerMessage(speaker.playerId, "...");
+      gameStore.nextSpeaker();
+    }
+  }
+
+  // 发言结束，进入投票
+  if (gameStore.phase === "SPEECH") {
+    gameStore.setPhase("VOTE");
+  }
+}
+
+async function executeVote() {
+  // AI 投票
+  const alivePlayers = gameStore.alivePlayers.filter((p) => !p.isHuman);
+  const llm = useLLM();
+
+  for (const player of alivePlayers) {
+    try {
+      const gameState = buildVoteContext(player);
+      const targets = gameStore.alivePlayers
+        .filter((p) => p.playerId !== player.playerId)
+        .map((p) => p.seat);
+
+      const target = await llm.generateVote(gameState, targets);
+      gameStore.castVote(player.playerId, target);
+    } catch (err) {
+      console.error("AI vote error:", err);
+      const targets = gameStore.alivePlayers
+        .filter((p) => p.playerId !== player.playerId)
+        .map((p) => p.seat);
+      if (targets.length > 0 && targets[0] !== undefined) {
+        gameStore.castVote(player.playerId, targets[0]!);
+      }
+    }
+  }
+
+  // 结算投票
+  const result = gameStore.resolveVote();
+
+  if (result === null) {
+    gameStore.addSystemMessage("投票平票，无人出局");
+    gameStore.setPhase("SPEECH");
+    gameStore.startDaySpeech();
+  } else {
+    const player = gameStore.players.find((p) => p.seat === result);
+    gameStore.addSystemMessage(`${player?.displayName || "未知"}被投票出局`);
+    if (player) player.alive = false;
+
+    if (player?.role === "Hunter") {
+      gameStore.setPhase("HUNTER_SHOOT");
+    } else {
+      gameStore.day++;
+      gameStore.setPhase("NIGHT");
+    }
+  }
+}
+
+// ============ 上下文构建 ============
+
+function buildSpeechContext(): string {
+  const alivePlayers = gameStore.players.filter((p) => p.alive);
+  const messages = gameStore.messages.slice(-20);
+
+  let context = "【存活玩家】\n";
+  alivePlayers.forEach((p) => {
+    context += `${p.seat + 1}号位: ${p.displayName}\n`;
+  });
+
+  context += "\n【最近发言】\n";
+  messages.forEach((msg) => {
+    if (msg.isSystem) {
+      context += `[系统]: ${msg.content}\n`;
+    } else {
+      context += `${msg.playerName}: ${msg.content}\n`;
+    }
+  });
+
+  return context;
+}
+
+function buildVoteContext(voter: { playerId: string; role: string; displayName: string }): string {
+  const alivePlayers = gameStore.players.filter((p) => p.alive);
+
+  let context = `【投票玩家】${voter.displayName} (${voter.role})\n\n`;
+  context += "【存活玩家】\n";
+  alivePlayers.forEach((p) => {
+    context += `${p.seat + 1}号位: ${p.displayName}\n`;
+  });
+
+  return context;
+}
+
+// ============ 人类行动判断 ============
+
+const canHumanAct = computed(() => {
+  if (!humanPlayer.value || !humanPlayer.value.alive) return false;
+
+  if (gameStore.phase === "NIGHT") {
+    const role = humanPlayer.value.role;
+    switch (role) {
+      case "Werewolf":
+        return gameStore.nightActions.wolfTarget === undefined;
+      case "Seer":
+        return gameStore.nightActions.seerTarget === undefined;
+      case "Guard":
+        return gameStore.nightActions.guardTarget === undefined;
+      case "Witch":
+        const canSave =
+          !gameStore.roleAbilities.witchHealUsed && gameStore.nightActions.wolfTarget !== undefined;
+        return canSave || !gameStore.roleAbilities.witchPoisonUsed;
+      default:
+        return false;
+    }
+  }
+
+  if (gameStore.phase === "SPEECH") {
+    return gameStore.currentSpeakerSeat === humanPlayer.value.seat;
+  }
+
+  if (gameStore.phase === "VOTE") {
+    return gameStore.votes[humanPlayer.value.playerId] === undefined;
+  }
+
+  return false;
+});
+
+const canClickPlayer = computed(() => {
+  if (!canHumanAct.value) return false;
+  if (gameStore.phase === "NIGHT") {
+    const role = humanPlayer.value?.role;
+    return role === "Werewolf" || role === "Seer" || role === "Guard" || role === "Witch";
+  }
+  return gameStore.phase === "VOTE";
+});
+
+// ============ 返回大厅 ============
 
 function returnToLobby() {
   gameStore.reset();
@@ -289,7 +377,7 @@ function returnToLobby() {
           <component
             :is="currentPhaseIcon"
             class="h-6 w-6"
-            :class="isNight ? 'text-primary' : 'text-primary'"
+            :class="isNight ? 'text-slate-400' : 'text-amber-500'"
           />
           <span class="text-foreground text-lg font-semibold">{{ phaseInfo.label }}</span>
           <Badge v-if="gameStore.phase !== 'LOBBY'" variant="secondary" class="text-xs">
@@ -315,7 +403,8 @@ function returnToLobby() {
 
     <!-- 阶段提示 -->
     <div
-      class="border-border bg-muted/50 text-muted-foreground border-b px-4 py-2 text-center text-sm"
+      class="border-border px-4 py-2 text-center text-sm"
+      :class="isNight ? 'bg-slate-900 text-slate-400' : 'bg-amber-50 text-slate-600'"
     >
       {{ phaseInfo.desc }}
     </div>
@@ -349,12 +438,12 @@ function returnToLobby() {
                     !player.alive && 'opacity-50 grayscale',
                     canClickPlayer && player.alive && 'hover:bg-muted cursor-pointer',
                     gameStore.currentSpeakerSeat === player.seat &&
-                      'bg-primary/10 ring-primary ring-2',
+                      'bg-amber-500/10 ring-2 ring-amber-500',
                   ]"
                   @click="handlePlayerClick(player.seat)"
                 >
                   <Avatar class="h-10 w-10">
-                    <AvatarFallback class="bg-primary text-primary-foreground">
+                    <AvatarFallback class="bg-amber-900/50 text-amber-500">
                       {{ player.seat + 1 }}
                     </AvatarFallback>
                   </Avatar>
@@ -363,7 +452,7 @@ function returnToLobby() {
                     <div class="flex items-center gap-1">
                       <span
                         class="text-foreground truncate text-sm font-medium"
-                        :class="player.isHuman && 'text-primary'"
+                        :class="player.isHuman && 'text-amber-500'"
                       >
                         {{ player.displayName }}
                       </span>
@@ -380,7 +469,7 @@ function returnToLobby() {
                   <!-- 预言家查验结果 -->
                   <div
                     v-if="gameStore.nightActions.seerResult?.targetSeat === player.seat"
-                    class="bg-primary text-primary-foreground absolute -top-1 -right-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold"
+                    class="absolute -top-1 -right-1 rounded-full bg-blue-500 px-1.5 py-0.5 text-[10px] font-bold text-white"
                   >
                     {{ gameStore.nightActions.seerResult.isWolf ? "狼" : "好" }}
                   </div>
@@ -392,7 +481,7 @@ function returnToLobby() {
           <!-- 女巫行动面板 -->
           <Card v-if="humanPlayer?.role === 'Witch' && gameStore.phase === 'NIGHT'" class="mt-4">
             <CardHeader class="pb-2">
-              <CardTitle class="text-primary text-sm">女巫行动</CardTitle>
+              <CardTitle class="text-sm text-purple-500">女巫行动</CardTitle>
             </CardHeader>
             <CardContent class="space-y-2">
               <div
@@ -415,127 +504,109 @@ function returnToLobby() {
                     !gameStore.roleAbilities.witchHealUsed
                   "
                   size="sm"
-                  @click="witchSave"
+                  @click="gameStore.setNightAction({ witchSave: true })"
                 >
                   救人
                 </Button>
-                <Button size="sm" variant="outline" @click="witchPass"> 跳过 </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  @click="gameStore.setNightAction({ witchSave: false })"
+                >
+                  跳过
+                </Button>
               </div>
             </CardContent>
           </Card>
 
-          <!-- 猎人开枪面板 -->
-          <Card
-            v-if="gameStore.phase === 'HUNTER_SHOOT' && humanPlayer?.role === 'Hunter'"
-            class="mt-4"
-          >
+          <!-- 守卫行动面板 -->
+          <Card v-if="humanPlayer?.role === 'Guard' && gameStore.phase === 'NIGHT'" class="mt-4">
             <CardHeader class="pb-2">
-              <CardTitle class="text-primary text-sm">猎人开枪</CardTitle>
+              <CardTitle class="text-sm text-green-500">守卫行动</CardTitle>
             </CardHeader>
-            <CardContent class="space-y-2">
-              <p class="text-muted-foreground text-sm">选择要带走的目标，或跳过</p>
-              <div class="flex gap-2">
-                <Button size="sm" variant="outline" @click="hunterPass">跳过</Button>
+            <CardContent>
+              <p class="text-muted-foreground mb-2 text-sm">点击要保护的玩家</p>
+              <div class="text-xs text-slate-500">
+                上一晚保护了:
+                {{
+                  gameStore.nightActions.lastGuardTarget !== undefined
+                    ? `${gameStore.nightActions.lastGuardTarget + 1}号`
+                    : "无"
+                }}
               </div>
             </CardContent>
           </Card>
         </div>
 
-        <!-- 右侧：聊天和操作 -->
+        <!-- 右侧：对话框 + 聊天 -->
         <div class="lg:col-span-2">
-          <!-- 聊天记录 -->
-          <Card class="h-125">
-            <CardHeader class="pb-2">
-              <CardTitle class="text-muted-foreground text-sm">聊天记录</CardTitle>
-            </CardHeader>
-            <CardContent class="flex h-[calc(100%-60px)] flex-col">
-              <ScrollArea ref="chatScrollRef" class="flex-1 pr-4">
-                <div class="space-y-3">
-                  <template v-for="msg in gameStore.messages" :key="msg.id">
-                    <div v-if="msg.isSystem" class="py-2 text-center">
-                      <span class="text-muted-foreground text-sm">{{ msg.content }}</span>
-                    </div>
-                    <div v-else class="flex gap-2">
-                      <span class="text-foreground shrink-0 text-sm font-medium"
-                        >{{ msg.playerName }}:</span
-                      >
-                      <span
-                        class="text-muted-foreground text-sm"
-                        :class="msg.isLastWords && 'italic'"
-                      >
-                        {{ msg.content }}
-                      </span>
-                    </div>
-                  </template>
-                </div>
-              </ScrollArea>
+          <Card class="h-150">
+            <CardContent class="flex h-full flex-col p-4">
+              <!-- 对话区域 -->
+              <DialogArea
+                :current-speaker="currentPlayer"
+                :current-text="currentText"
+                :is-typing="isTyping"
+                :reasoning-content="reasoningContent"
+                :human-input="humanInput"
+                :on-input-change="(v: string) => (humanInput = v)"
+                :on-submit="submitSpeech"
+                :on-skip="continueGame"
+              />
 
               <Separator class="my-3" />
 
-              <!-- 发言输入 -->
-              <div
-                v-if="
-                  gameStore.phase === 'SPEECH' && gameStore.currentSpeakerSeat === humanPlayer?.seat
-                "
-                class="space-y-2"
-              >
-                <Input
-                  v-model="humanInput"
-                  placeholder="输入你的发言..."
-                  @keyup.enter="submitSpeech"
-                />
-                <Button class="w-full" @click="submitSpeech" :disabled="!humanInput.trim()">
-                  发言
-                </Button>
-              </div>
-
-              <!-- 继续按钮 -->
-              <Button
-                v-else-if="!canHumanAct && gameStore.phase !== 'GAME_OVER'"
-                class="w-full"
-                @click="continueGame"
-                :disabled="isProcessing"
-              >
-                <SkipForward v-if="!isProcessing" class="mr-2 h-4 w-4" />
-                {{ isProcessing ? "处理中..." : "继续" }}
-              </Button>
-
-              <!-- 游戏结束 -->
-              <div v-if="gameStore.phase === 'GAME_OVER'" class="py-4 text-center">
-                <p
-                  class="mb-2 text-2xl font-bold"
-                  :class="gameStore.winner === 'wolf' ? 'text-destructive' : 'text-primary'"
-                >
-                  {{ gameStore.winner === "wolf" ? "狼人胜利！" : "好人胜利！" }}
-                </p>
-                <Button variant="outline" @click="returnToLobby">返回大厅</Button>
+              <!-- 聊天历史 -->
+              <div class="min-h-0 flex-1">
+                <ScrollArea ref="chatScrollRef" class="h-full pr-4">
+                  <div class="space-y-3">
+                    <template v-for="msg in gameStore.messages" :key="msg.id">
+                      <div v-if="msg.isSystem" class="py-2 text-center">
+                        <span class="text-sm text-slate-500">{{ msg.content }}</span>
+                      </div>
+                      <div v-else class="flex gap-2">
+                        <span class="shrink-0 text-sm font-medium text-amber-500"
+                          >{{ msg.playerName }}:</span
+                        >
+                        <span
+                          class="text-sm text-slate-300"
+                          :class="msg.isLastWords && 'text-orange-400 italic'"
+                        >
+                          {{ msg.content }}
+                        </span>
+                      </div>
+                    </template>
+                  </div>
+                </ScrollArea>
               </div>
             </CardContent>
           </Card>
+
+          <!-- 继续按钮 -->
+          <Button
+            v-if="!canHumanAct && gameStore.phase !== 'GAME_OVER' && !isProcessing"
+            class="mt-4 w-full"
+            @click="continueGame"
+          >
+            <SkipForward class="mr-2 h-4 w-4" />
+            继续
+          </Button>
+
+          <!-- 处理中 -->
+          <div v-if="isProcessing" class="py-4 text-center text-sm text-slate-500">处理中...</div>
+
+          <!-- 游戏结束 -->
+          <div v-if="gameStore.phase === 'GAME_OVER'" class="mt-4 py-4 text-center">
+            <p
+              class="mb-2 text-2xl font-bold"
+              :class="gameStore.winner === 'wolf' ? 'text-red-500' : 'text-green-500'"
+            >
+              {{ gameStore.winner === "wolf" ? "狼人胜利！" : "好人胜利！" }}
+            </p>
+            <Button variant="outline" @click="returnToLobby">返回大厅</Button>
+          </div>
         </div>
       </div>
     </main>
-
-    <!-- 身份揭示对话框 -->
-    <Dialog v-model:open="showRole">
-      <DialogContent class="bg-card text-foreground">
-        <DialogHeader>
-          <DialogTitle>你的身份</DialogTitle>
-        </DialogHeader>
-        <div class="flex flex-col items-center py-6">
-          <Avatar class="mb-4 h-24 w-24">
-            <AvatarFallback class="bg-primary text-primary-foreground">
-              {{ humanPlayer?.role?.[0] || "V" }}
-            </AvatarFallback>
-          </Avatar>
-          <h2 class="text-foreground text-2xl font-bold">
-            {{ getRoleDisplayName(humanPlayer?.role || "Villager") }}
-          </h2>
-          <p class="text-muted-foreground mt-2">
-            {{ humanPlayer?.alignment === "wolf" ? "你是狼人阵营" : "你是好人阵营" }}
-          </p>
-        </div>
-      </DialogContent>
-    </Dialog>
   </div>
 </template>
