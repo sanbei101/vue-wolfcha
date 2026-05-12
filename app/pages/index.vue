@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Skull, Moon, Sun, Users, Shield } from "lucide-vue-next";
+import { Skull, Moon, Sun, Shield } from "lucide-vue-next";
 import { ref, computed } from "vue";
 import { useRouter } from "vue-router";
 
@@ -49,12 +49,12 @@ function handleStartGame() {
 </script>
 
 <template>
-  <div class="min-h-screen bg-linear-to-b from-slate-950 via-slate-900 to-slate-950">
+  <div class="bg-background min-h-screen">
     <!-- 背景装饰 -->
     <div class="pointer-events-none fixed inset-0 overflow-hidden">
-      <div class="absolute top-1/4 left-1/4 h-125 w-125 rounded-full bg-red-600/10 blur-[120px]" />
+      <div class="bg-primary/5 absolute top-1/4 left-1/4 h-125 w-125 rounded-full blur-[120px]" />
       <div
-        class="absolute right-1/4 bottom-1/4 h-125 w-125 rounded-full bg-blue-600/10 blur-[120px]"
+        class="bg-primary/5 absolute right-1/4 bottom-1/4 h-125 w-125 rounded-full blur-[120px]"
       />
     </div>
 
@@ -62,43 +62,39 @@ function handleStartGame() {
       <!-- Logo 区域 -->
       <div class="mb-10 text-center">
         <div class="mb-4 flex items-center justify-center gap-4">
-          <Moon class="h-14 w-14 animate-pulse text-yellow-500" />
-          <h1 class="text-6xl font-bold tracking-tight text-white drop-shadow-lg">狼人杀</h1>
-          <Skull class="h-14 w-14 text-red-500" />
+          <Moon class="text-primary h-14 w-14 animate-pulse" />
+          <h1 class="text-foreground text-6xl font-bold tracking-tight drop-shadow-lg">狼人杀</h1>
+          <Skull class="text-destructive h-14 w-14" />
         </div>
-        <p class="text-lg text-slate-400">AI 对战版 · 与智能 AI 玩家同台竞技</p>
+        <p class="text-muted-foreground text-lg">AI 对战版 · 与智能 AI 玩家同台竞技</p>
       </div>
 
       <!-- 主卡片 -->
-      <Card
-        class="w-full max-w-md border-slate-700/50 bg-slate-900/80 shadow-2xl shadow-black/50 backdrop-blur-xl"
-      >
+      <Card class="border-border bg-card w-full max-w-md shadow-2xl">
         <CardHeader class="pb-2 text-center">
-          <CardTitle class="text-2xl text-white">创建游戏</CardTitle>
+          <CardTitle class="text-foreground text-2xl">创建游戏</CardTitle>
         </CardHeader>
 
         <CardContent class="space-y-5">
           <!-- 昵称输入 -->
           <div class="space-y-2">
-            <Label for="name" class="text-slate-300">你的昵称</Label>
+            <Label for="name" class="text-foreground">你的昵称</Label>
             <Input
               id="name"
               v-model="humanName"
               placeholder="输入昵称"
-              class="h-12 border-slate-600 bg-slate-800/80 text-lg text-white placeholder:text-slate-500 focus:border-yellow-500 focus:ring-yellow-500/20"
+              class="text-foreground placeholder:text-muted-foreground h-12 text-lg"
             />
           </div>
 
           <!-- 玩家数量 -->
           <div class="space-y-2">
-            <Label class="text-slate-300">玩家数量</Label>
+            <Label class="text-foreground">玩家数量</Label>
             <Select v-model="playerCount" @update:model-value="(v) => (playerCount = Number(v))">
-              <SelectTrigger
-                class="h-12 border-slate-600 bg-slate-800/80 text-white focus:border-yellow-500"
-              >
+              <SelectTrigger class="text-foreground h-12">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent class="border-slate-700 bg-slate-800">
+              <SelectContent class="bg-card border-border">
                 <SelectItem :value="6">6 人 · 简单</SelectItem>
                 <SelectItem :value="7">7 人</SelectItem>
                 <SelectItem :value="8">8 人 · 标准</SelectItem>
@@ -110,14 +106,12 @@ function handleStartGame() {
 
           <!-- 难度选择 -->
           <div class="space-y-2">
-            <Label class="text-slate-300">游戏难度</Label>
+            <Label class="text-foreground">游戏难度</Label>
             <Select v-model="difficulty" @update:model-value="(v) => (difficulty = v as string)">
-              <SelectTrigger
-                class="h-12 border-slate-600 bg-slate-800/80 text-white focus:border-yellow-500"
-              >
+              <SelectTrigger class="text-foreground h-12">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent class="border-slate-700 bg-slate-800">
+              <SelectContent class="bg-card border-border">
                 <SelectItem value="easy">简单 · AI 表现较差</SelectItem>
                 <SelectItem value="normal">普通 · AI 正常表现</SelectItem>
                 <SelectItem value="hard">困难 · AI 表现更强</SelectItem>
@@ -126,12 +120,10 @@ function handleStartGame() {
           </div>
 
           <!-- 角色预览 -->
-          <div class="rounded-lg border border-slate-700/50 bg-slate-800/50 p-4">
+          <div class="border-border bg-muted/30 rounded-lg border p-4">
             <div class="mb-3 flex items-center justify-between">
-              <span class="text-sm text-slate-400">角色配置</span>
-              <Badge class="border-red-500/30 bg-red-500/20 text-red-400">
-                {{ rolePreview!.wolves }} 狼人
-              </Badge>
+              <span class="text-muted-foreground text-sm">角色配置</span>
+              <Badge variant="destructive"> {{ rolePreview!.wolves }} 狼人 </Badge>
             </div>
             <div class="flex flex-wrap gap-2">
               <Badge
@@ -146,11 +138,7 @@ function handleStartGame() {
           </div>
 
           <!-- 开始按钮 -->
-          <Button
-            class="h-14 w-full bg-linear-to-r from-red-600 to-red-700 text-lg font-semibold text-white shadow-lg shadow-red-900/30 hover:from-red-500 hover:to-red-600"
-            size="lg"
-            @click="handleStartGame"
-          >
+          <Button class="h-14 w-full text-lg font-semibold" size="lg" @click="handleStartGame">
             <Skull class="mr-2 h-5 w-5" />
             开始游戏
           </Button>
@@ -158,21 +146,21 @@ function handleStartGame() {
       </Card>
 
       <!-- 游戏规则卡片 -->
-      <Card class="mt-6 w-full max-w-md border-slate-700/30 bg-slate-900/40 backdrop-blur">
+      <Card class="border-border bg-card/40 mt-6 w-full max-w-md">
         <CardContent class="p-5">
           <div class="grid grid-cols-2 gap-6">
-            <div class="flex flex-col items-center gap-2 rounded-lg bg-slate-800/30 p-4">
-              <Moon class="h-8 w-8 text-yellow-500" />
-              <span class="text-sm font-medium text-slate-200">夜晚行动</span>
-              <div class="space-y-0.5 text-center text-xs text-slate-500">
+            <div class="bg-muted/30 flex flex-col items-center gap-2 rounded-lg p-4">
+              <Moon class="text-primary h-8 w-8" />
+              <span class="text-foreground text-sm font-medium">夜晚行动</span>
+              <div class="text-muted-foreground space-y-0.5 text-center text-xs">
                 <p>狼人击杀 · 预言查验</p>
                 <p>女巫用药 · 守卫保护</p>
               </div>
             </div>
-            <div class="flex flex-col items-center gap-2 rounded-lg bg-slate-800/30 p-4">
-              <Sun class="h-8 w-8 text-orange-500" />
-              <span class="text-sm font-medium text-slate-200">白天流程</span>
-              <div class="space-y-0.5 text-center text-xs text-slate-500">
+            <div class="bg-muted/30 flex flex-col items-center gap-2 rounded-lg p-4">
+              <Sun class="text-primary h-8 w-8" />
+              <span class="text-foreground text-sm font-medium">白天流程</span>
+              <div class="text-muted-foreground space-y-0.5 text-center text-xs">
                 <p>发言讨论 · 投票放逐</p>
                 <p>遗言环节 · 胜负判定</p>
               </div>
@@ -182,7 +170,7 @@ function handleStartGame() {
       </Card>
 
       <!-- 底部信息 -->
-      <div class="mt-8 flex items-center gap-2 text-xs text-slate-600">
+      <div class="text-muted-foreground mt-8 flex items-center gap-2 text-xs">
         <Shield class="h-3 w-3" />
         <span>点击开始即表示同意游戏规则</span>
       </div>
