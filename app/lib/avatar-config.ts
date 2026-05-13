@@ -203,7 +203,7 @@ export function buildAvatarUrl(options: AvatarUrlOptions): string {
     params.set("translateY", String(translateY));
   }
 
-  // 发型 - 如果提供了 gender，则根据性别选择
+  // 发型 - 如果提供了 gender,则根据性别选择
   if (hair) {
     params.set("hair", hair);
   } else if (gender) {

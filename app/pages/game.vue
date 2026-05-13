@@ -78,6 +78,21 @@ function submitSpeech() {
 // ============ 游戏流程 ============
 
 async function continueGame() {
+  // 人需要行动时，等待（不阻塞其他逻辑）
+  if (gameStore.phase === "NIGHT" && humanPlayer.value?.alive) {
+    const role = humanPlayer.value.role;
+    if (role === "Seer" && gameStore.nightActions.seerTarget === undefined) return;
+    if (role === "Werewolf" && gameStore.nightActions.wolfTarget === undefined) return;
+    if (role === "Guard" && gameStore.nightActions.guardTarget === undefined) return;
+    if (role === "Witch") {
+      const canSave = !gameStore.roleAbilities.witchHealUsed && gameStore.nightActions.wolfTarget !== undefined;
+      if (canSave || !gameStore.roleAbilities.witchPoisonUsed) return;
+    }
+  }
+  if (gameStore.phase === "HUNTER_SHOOT" && humanPlayer.value?.role === "Hunter" && gameStore.roleAbilities.hunterCanShoot) {
+    return;
+  }
+
   if (isProcessing.value) return;
   isProcessing.value = true;
 
@@ -87,13 +102,6 @@ async function continueGame() {
 
     switch (gameStore.phase) {
       case "NIGHT":
-        if (
-          humanPlayer.value?.alive &&
-          humanPlayer.value?.role !== "Villager" &&
-          humanPlayer.value?.role !== "Hunter"
-        ) {
-          return; // 等待人类行动
-        }
         await executeNightActions();
         gameStore.setPhase("DAY_START");
         break;
@@ -123,9 +131,6 @@ async function continueGame() {
         break;
 
       case "HUNTER_SHOOT":
-        if (humanPlayer.value?.role === "Hunter" && gameStore.roleAbilities.hunterCanShoot) {
-          return; // 等待猎人行动
-        }
         gameStore.nextPhase();
         break;
     }

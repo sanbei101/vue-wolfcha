@@ -2,7 +2,7 @@
 /**
  * TalkingAvatarSmall.vue
  *
- * 小头像版本，用于聊天历史中的玩家头像。
+ * 小头像版本,用于聊天历史中的玩家头像。
  */
 
 import { ref, computed, watch, onUnmounted } from "vue";

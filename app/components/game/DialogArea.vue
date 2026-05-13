@@ -2,7 +2,7 @@
 /**
  * DialogArea.vue
  *
- * 完整的对话区域组件，集成了：
+ * 完整的对话区域组件,集成了:
  * - TalkingAvatar 说话嘴型动画
  * - TalkingAvatarSmall 聊天历史小头像
  * - 逐字打字机效果
@@ -101,7 +101,7 @@ function handleKeydown(e: KeyboardEvent) {
     tabindex="0"
     @keydown="handleKeydown"
   >
-    <!-- 左侧：角色展示区 -->
+    <!-- 左侧:角色展示区 -->
     <div class="hidden md:flex w-55 lg:w-65 shrink-0 flex-col items-center justify-end">
       <!-- 角色头像 + 嘴型动画 -->
       <div class="relative flex flex-col items-center">
@@ -143,7 +143,7 @@ function handleKeydown(e: KeyboardEvent) {
       </div>
     </div>
 
-    <!-- 右侧：聊天历史 + 对话框 -->
+    <!-- 右侧:聊天历史 + 对话框 -->
     <div class="flex-1 min-w-0 flex flex-col">
       <!-- 聊天历史 -->
       <div class="flex-1 min-h-0">

@@ -2,7 +2,7 @@
 /**
  * TalkingAvatar.vue
  *
- * 带说话动画的头像组件：
+ * 带说话动画的头像组件:
  * - 静止时显示 getIdleLipsForSeed(seed) 的嘴型
  * - 说话时每 120ms 在 TALKING_LIPS 之间切换嘴型
  * - 通过 DiceBear Notionists API 动态生成头像
