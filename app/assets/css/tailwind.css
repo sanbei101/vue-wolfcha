@@ -127,3 +127,68 @@
     @apply cursor-pointer;
   }
 }
+
+/* ============================================
+ * 打字机光标动画
+ * 用于 AI 发言时的逐字显示效果
+ * ============================================ */
+.wc-typing-cursor::after {
+  content: "|";
+  animation: wc-blink 0.8s infinite;
+  color: var(--color-primary, #c5a959);
+  font-weight: 300;
+}
+@keyframes wc-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* ============================================
+ * 头像切换过渡动画
+ * ============================================ */
+.portrait-enter-active,
+.portrait-leave-active {
+  transition: opacity 0.35s ease-out, filter 0.35s ease-out;
+}
+.portrait-enter-from,
+.portrait-leave-to {
+  opacity: 0;
+  filter: blur(8px);
+}
+
+/* ============================================
+ * 消息入场动画
+ * ============================================ */
+.wc-msg-enter-active {
+  transition: opacity 0.3s ease-out, transform 0.3s ease-out;
+}
+.wc-msg-enter-from {
+  opacity: 0;
+  transform: translateY(12px);
+}
+.wc-msg-leave-active {
+  transition: opacity 0.2s ease-out, transform 0.2s ease-out;
+}
+.wc-msg-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+
+/* ============================================
+ * 说话中状态光晕
+ * ============================================ */
+.wc-speaking-glow {
+  position: relative;
+}
+.wc-speaking-glow::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  animation: wc-glow-pulse 2s infinite;
+  pointer-events: none;
+}
+@keyframes wc-glow-pulse {
+  0%, 100% { box-shadow: 0 0 8px 2px rgba(197, 169, 89, 0.2); }
+  50% { box-shadow: 0 0 16px 4px rgba(197, 169, 89, 0.4); }
+}

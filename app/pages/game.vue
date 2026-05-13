@@ -1,5 +1,14 @@
 <script setup lang="ts">
-import { Moon, Sun, ChevronLeft, SkipForward, Eye } from "lucide-vue-next";
+/**
+ * game.vue - 游戏主页面
+ *
+ * 已集成说话动画系统：
+ * - useTypewriter: AI 发言的逐字打字机效果
+ * - TalkingAvatar: 头像嘴型动画（说话时切换）
+ * - TalkingAvatarSmall: 聊天历史小头像
+ */
+
+import { Moon, Sun, ChevronLeft } from "lucide-vue-next";
 import { computed, onMounted, ref, watch, nextTick } from "vue";
 import { useRouter } from "vue-router";
 
@@ -12,6 +21,7 @@ import { ScrollArea } from "~/components/ui/scroll-area";
 import { Separator } from "~/components/ui/separator";
 import { useGame } from "~/composables/useGame";
 import { useLLM } from "~/composables/useLLM";
+import { useTypewriter } from "~/composables/useTypewriter";
 import { useGameStore } from "~/stores/game";
 import { getRoleDisplayName } from "~/types/game";
 import type { Player } from "~/types/game";
@@ -25,20 +35,230 @@ const humanInput = ref("");
 const showRole = ref(false);
 const chatScrollRef = ref<HTMLElement | null>(null);
 
-// 当前显示的文字和思维链
-const currentText = ref("");
-const reasoningContent = ref("");
-const isTyping = ref(false);
+// 当前发言者
 const currentPlayer = ref<Player | null>(null);
 
-// 跳转到大厅如果没在游戏中
+// ============ 打字机效果 ============
+// AI 发言时，文字逐字显示
+
+const typewriter = useTypewriter({
+  speed: 30,
+  onComplete: () => {
+    // 打字完成 → 添加到消息历史，然后推进到下一位
+    if (currentPlayer.value && typewriter.completedText.value) {
+      gameStore.addPlayerMessage(currentPlayer.value.playerId, typewriter.completedText.value);
+      typewriter.reset();
+      gameStore.nextSpeaker();
+    }
+  },
+});
+
+// ============ 跳过打字 ============
+
+function skipTypewriter() {
+  if (typewriter.isTyping.value) {
+    // 还在打字：跳过，直接显示完整文本并添加到历史
+    const fullText = typewriter.completedText.value || typewriter.displayedText.value;
+    if (currentPlayer.value && fullText) {
+      gameStore.addPlayerMessage(currentPlayer.value.playerId, fullText);
+    }
+    typewriter.skip();
+  }
+}
+
+// ============ 发言 ============
+
+function submitSpeech() {
+  if (!humanPlayer.value || !humanInput.value.trim()) return;
+  gameStore.addPlayerMessage(humanPlayer.value.playerId, humanInput.value.trim());
+  humanInput.value = "";
+  gameStore.nextSpeaker();
+}
+
+// ============ 游戏流程 ============
+
+async function continueGame() {
+  if (isProcessing.value) return;
+  isProcessing.value = true;
+
+  try {
+    const winner = checkAndEndGame();
+    if (winner) return;
+
+    switch (gameStore.phase) {
+      case "NIGHT":
+        if (
+          humanPlayer.value?.alive &&
+          humanPlayer.value?.role !== "Villager" &&
+          humanPlayer.value?.role !== "Hunter"
+        ) {
+          return; // 等待人类行动
+        }
+        await executeNightActions();
+        gameStore.setPhase("DAY_START");
+        break;
+
+      case "DAY_START":
+        const deaths = gameStore.deaths;
+        if (deaths.length > 0) {
+          const names = deaths
+            .map((d) => gameStore.players.find((p) => p.seat === d.seat)?.displayName)
+            .filter(Boolean)
+            .join("、");
+          gameStore.addSystemMessage(`昨夜死亡: ${names}`);
+        } else {
+          gameStore.addSystemMessage("昨夜是平安夜");
+        }
+        gameStore.deaths = [];
+        gameStore.setPhase("SPEECH");
+        gameStore.startDaySpeech();
+        break;
+
+      case "SPEECH":
+        await executeDaySpeech();
+        break;
+
+      case "VOTE":
+        await executeVote();
+        break;
+
+      case "HUNTER_SHOOT":
+        if (humanPlayer.value?.role === "Hunter" && gameStore.roleAbilities.hunterCanShoot) {
+          return; // 等待猎人行动
+        }
+        gameStore.nextPhase();
+        break;
+    }
+  } finally {
+    isProcessing.value = false;
+  }
+}
+
+// ============ AI 发言逻辑 ============
+
+async function executeDaySpeech() {
+  while (gameStore.currentSpeakerSeat !== null) {
+    const speaker = gameStore.currentSpeaker;
+    if (!speaker) break;
+
+    // 人类玩家：等待输入
+    if (speaker.isHuman) {
+      currentPlayer.value = speaker;
+      typewriter.reset();
+      isProcessing.value = false;
+      return;
+    }
+
+    // AI 发言：设置当前发言者，启动打字机
+    currentPlayer.value = speaker;
+
+    try {
+      const { generateSpeech } = useLLM();
+      const context = buildSpeechContext();
+      const result = await generateSpeech(speaker.role, context, speaker.displayName);
+
+      // 启动打字机效果，逐字显示 AI 发言
+      typewriter.start(result.content);
+    } catch (err) {
+      console.error("AI speech error:", err);
+      typewriter.start("...");
+    }
+  }
+
+  // 所有 AI 发言完毕，进入投票
+  if (gameStore.phase === "SPEECH") {
+    gameStore.setPhase("VOTE");
+  }
+}
+
+// ============ 投票 ============
+
+async function executeVote() {
+  const alivePlayers = gameStore.alivePlayers.filter((p) => !p.isHuman);
+  const llm = useLLM();
+
+  for (const player of alivePlayers) {
+    try {
+      const gameState = buildVoteContext(player);
+      const targets = gameStore.alivePlayers
+        .filter((p) => p.playerId !== player.playerId)
+        .map((p) => p.seat);
+
+      const target = await llm.generateVote(gameState, targets);
+      gameStore.castVote(player.playerId, target);
+    } catch (err) {
+      console.error("AI vote error:", err);
+      const targets = gameStore.alivePlayers
+        .filter((p) => p.playerId !== player.playerId)
+        .map((p) => p.seat);
+      if (targets.length > 0 && targets[0] !== undefined) {
+        gameStore.castVote(player.playerId, targets[0]!);
+      }
+    }
+  }
+
+  const result = gameStore.resolveVote();
+
+  if (result === null) {
+    gameStore.addSystemMessage("投票平票，无人出局");
+    gameStore.setPhase("SPEECH");
+    gameStore.startDaySpeech();
+  } else {
+    const player = gameStore.players.find((p) => p.seat === result);
+    gameStore.addSystemMessage(`${player?.displayName || "未知"}被投票出局`);
+    if (player) player.alive = false;
+
+    if (player?.role === "Hunter") {
+      gameStore.setPhase("HUNTER_SHOOT");
+    } else {
+      gameStore.day++;
+      gameStore.setPhase("NIGHT");
+    }
+  }
+}
+
+// ============ 上下文构建 ============
+
+function buildSpeechContext(): string {
+  const alivePlayers = gameStore.players.filter((p) => p.alive);
+  const messages = gameStore.messages.slice(-20);
+
+  let context = "【存活玩家】\n";
+  alivePlayers.forEach((p) => {
+    context += `${p.seat + 1}号位: ${p.displayName}\n`;
+  });
+
+  context += "\n【最近发言】\n";
+  messages.forEach((msg) => {
+    if (msg.isSystem) {
+      context += `[系统]: ${msg.content}\n`;
+    } else {
+      context += `${msg.playerName}: ${msg.content}\n`;
+    }
+  });
+
+  return context;
+}
+
+function buildVoteContext(voter: { playerId: string; role: string; displayName: string }): string {
+  const alivePlayers = gameStore.players.filter((p) => p.alive);
+
+  let context = `【投票玩家】${voter.displayName} (${voter.role})\n\n`;
+  context += "【存活玩家】\n";
+  alivePlayers.forEach((p) => {
+    context += `${p.seat + 1}号位: ${p.displayName}\n`;
+  });
+
+  return context;
+}
+
+// ============ 计算属性 ============
+
 onMounted(() => {
   if (gameStore.phase === "LOBBY") {
     router.push("/");
   }
 });
-
-// ============ 计算属性 ============
 
 const isNight = computed(() => gameStore.phase === "NIGHT");
 
@@ -105,214 +325,6 @@ function handleVote(seat: number) {
   gameStore.castVote(humanPlayer.value.playerId, seat);
 }
 
-// ============ 发言 ============
-
-function submitSpeech() {
-  if (!humanPlayer.value || !humanInput.value.trim()) return;
-  gameStore.addPlayerMessage(humanPlayer.value.playerId, humanInput.value.trim());
-  humanInput.value = "";
-  gameStore.nextSpeaker();
-  currentText.value = "";
-  reasoningContent.value = "";
-}
-
-// ============ 游戏流程 ============
-
-async function continueGame() {
-  if (isProcessing.value) return;
-  isProcessing.value = true;
-
-  try {
-    const winner = checkAndEndGame();
-    if (winner) return;
-
-    switch (gameStore.phase) {
-      case "NIGHT":
-        if (
-          humanPlayer.value?.alive &&
-          humanPlayer.value?.role !== "Villager" &&
-          humanPlayer.value?.role !== "Hunter"
-        ) {
-          return; // 等待人类行动
-        }
-        // AI 夜晚行动
-        await executeNightActions();
-        gameStore.setPhase("DAY_START");
-        break;
-
-      case "DAY_START":
-        const deaths = gameStore.deaths;
-        if (deaths.length > 0) {
-          const names = deaths
-            .map((d) => gameStore.players.find((p) => p.seat === d.seat)?.displayName)
-            .filter(Boolean)
-            .join("、");
-          gameStore.addSystemMessage(`昨夜死亡: ${names}`);
-        } else {
-          gameStore.addSystemMessage("昨夜是平安夜");
-        }
-        gameStore.deaths = [];
-        gameStore.setPhase("SPEECH");
-        gameStore.startDaySpeech();
-        break;
-
-      case "SPEECH":
-        // AI 发言
-        await executeDaySpeech();
-        break;
-
-      case "VOTE":
-        // AI 投票
-        await executeVote();
-        break;
-
-      case "HUNTER_SHOOT":
-        if (humanPlayer.value?.role === "Hunter" && gameStore.roleAbilities.hunterCanShoot) {
-          return; // 等待猎人行动
-        }
-        gameStore.nextPhase();
-        break;
-    }
-  } finally {
-    isProcessing.value = false;
-  }
-}
-
-// ============ AI 发言逻辑 ============
-
-async function executeDaySpeech() {
-  // 逐个让 AI 发言
-  while (gameStore.currentSpeakerSeat !== null) {
-    const speaker = gameStore.currentSpeaker;
-    if (!speaker) break;
-
-    if (speaker.isHuman) {
-      currentPlayer.value = speaker;
-      isProcessing.value = false;
-      return;
-    }
-
-    // AI 发言 - 显示思维链
-    currentPlayer.value = speaker;
-    isTyping.value = true;
-    reasoningContent.value = "";
-
-    try {
-      // 生成发言
-      const { generateSpeech } = useLLM();
-      const context = buildSpeechContext();
-      const result = await generateSpeech(speaker.role, context, speaker.displayName);
-
-      // 显示思维链和内容
-      currentText.value = result.content;
-      reasoningContent.value = result.reasoning_content || "";
-
-      // 添加到消息
-      gameStore.addPlayerMessage(speaker.playerId, result.content);
-
-      // 清空
-      currentText.value = "";
-      reasoningContent.value = "";
-      isTyping.value = false;
-
-      // 下一位
-      gameStore.nextSpeaker();
-    } catch (err) {
-      console.error("AI speech error:", err);
-      isTyping.value = false;
-      currentText.value = "...";
-      gameStore.addPlayerMessage(speaker.playerId, "...");
-      gameStore.nextSpeaker();
-    }
-  }
-
-  // 发言结束，进入投票
-  if (gameStore.phase === "SPEECH") {
-    gameStore.setPhase("VOTE");
-  }
-}
-
-async function executeVote() {
-  // AI 投票
-  const alivePlayers = gameStore.alivePlayers.filter((p) => !p.isHuman);
-  const llm = useLLM();
-
-  for (const player of alivePlayers) {
-    try {
-      const gameState = buildVoteContext(player);
-      const targets = gameStore.alivePlayers
-        .filter((p) => p.playerId !== player.playerId)
-        .map((p) => p.seat);
-
-      const target = await llm.generateVote(gameState, targets);
-      gameStore.castVote(player.playerId, target);
-    } catch (err) {
-      console.error("AI vote error:", err);
-      const targets = gameStore.alivePlayers
-        .filter((p) => p.playerId !== player.playerId)
-        .map((p) => p.seat);
-      if (targets.length > 0 && targets[0] !== undefined) {
-        gameStore.castVote(player.playerId, targets[0]!);
-      }
-    }
-  }
-
-  // 结算投票
-  const result = gameStore.resolveVote();
-
-  if (result === null) {
-    gameStore.addSystemMessage("投票平票，无人出局");
-    gameStore.setPhase("SPEECH");
-    gameStore.startDaySpeech();
-  } else {
-    const player = gameStore.players.find((p) => p.seat === result);
-    gameStore.addSystemMessage(`${player?.displayName || "未知"}被投票出局`);
-    if (player) player.alive = false;
-
-    if (player?.role === "Hunter") {
-      gameStore.setPhase("HUNTER_SHOOT");
-    } else {
-      gameStore.day++;
-      gameStore.setPhase("NIGHT");
-    }
-  }
-}
-
-// ============ 上下文构建 ============
-
-function buildSpeechContext(): string {
-  const alivePlayers = gameStore.players.filter((p) => p.alive);
-  const messages = gameStore.messages.slice(-20);
-
-  let context = "【存活玩家】\n";
-  alivePlayers.forEach((p) => {
-    context += `${p.seat + 1}号位: ${p.displayName}\n`;
-  });
-
-  context += "\n【最近发言】\n";
-  messages.forEach((msg) => {
-    if (msg.isSystem) {
-      context += `[系统]: ${msg.content}\n`;
-    } else {
-      context += `${msg.playerName}: ${msg.content}\n`;
-    }
-  });
-
-  return context;
-}
-
-function buildVoteContext(voter: { playerId: string; role: string; displayName: string }): string {
-  const alivePlayers = gameStore.players.filter((p) => p.alive);
-
-  let context = `【投票玩家】${voter.displayName} (${voter.role})\n\n`;
-  context += "【存活玩家】\n";
-  alivePlayers.forEach((p) => {
-    context += `${p.seat + 1}号位: ${p.displayName}\n`;
-  });
-
-  return context;
-}
-
 // ============ 人类行动判断 ============
 
 const canHumanAct = computed(() => {
@@ -361,6 +373,29 @@ const canClickPlayer = computed(() => {
 function returnToLobby() {
   gameStore.reset();
   router.push("/");
+}
+
+// ============ 聊天历史滚动 ============
+
+const visibleMessages = computed(() => {
+  return gameStore.messages.filter((m) => !m.isSystem);
+});
+
+watch(
+  () => gameStore.messages.length,
+  async () => {
+    await nextTick();
+    if (chatScrollRef.value) {
+      chatScrollRef.value.scrollTop = chatScrollRef.value.scrollHeight;
+    }
+  },
+);
+
+// 渲染 @X号 玩家标签
+function renderPlayerMentions(text: string): string {
+  return text.replace(/@(\d+)号?/g, (_, seat: string) => {
+    return `<span class="wc-mention">@${seat}号</span>`;
+  });
 }
 </script>
 
@@ -546,13 +581,12 @@ function returnToLobby() {
               <!-- 对话区域 -->
               <DialogArea
                 :current-speaker="currentPlayer"
-                :current-text="currentText"
-                :is-typing="isTyping"
-                :reasoning-content="reasoningContent"
+                :current-text="typewriter.displayedText.value"
+                :is-typing="typewriter.isTyping.value"
                 :human-input="humanInput"
                 :on-input-change="(v: string) => (humanInput = v)"
                 :on-submit="submitSpeech"
-                :on-skip="continueGame"
+                :on-skip="typewriter.isTyping.value ? skipTypewriter : continueGame"
               />
 
               <Separator class="my-3" />
@@ -569,9 +603,11 @@ function returnToLobby() {
                         <span class="text-primary shrink-0 text-sm font-medium"
                           >{{ msg.playerName }}:</span
                         >
-                        <span class="text-foreground text-sm">
-                          {{ msg.content }}
-                        </span>
+                        <!-- eslint-disable-next-line vue/no-v-html -->
+                        <span
+                          class="text-foreground text-sm"
+                          v-html="renderPlayerMentions(msg.content)"
+                        />
                       </div>
                     </template>
                   </div>
@@ -581,7 +617,10 @@ function returnToLobby() {
           </Card>
 
           <!-- 处理中 -->
-          <div v-if="isProcessing" class="text-muted-foreground py-4 text-center text-sm">
+          <div
+            v-if="isProcessing && !typewriter.isTyping.value"
+            class="text-muted-foreground py-4 text-center text-sm"
+          >
             处理中...
           </div>
 
