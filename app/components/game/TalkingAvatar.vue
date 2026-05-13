@@ -124,5 +124,7 @@ onUnmounted(() => {
   </div>
 
   <!-- 实际显示的头像 -->
-  <img :src="currentUrl" :alt="alt" :class="props.class" />
+  <div class="inline-block">
+    <img :src="currentUrl" :alt="alt" :class="props.class" />
+  </div>
 </template>

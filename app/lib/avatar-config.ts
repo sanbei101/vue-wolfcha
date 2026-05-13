@@ -222,7 +222,7 @@ export function buildAvatarUrl(options: AvatarUrlOptions): string {
   // 胡子概率 - 女性角色设置为 0 防止出现胡子
   params.set("beardProbability", "0");
 
-  return `https://api.dicebear.com/7.x/notionists/svg?${params.toString()}`;
+  return `https://api.dicebear.com/7.x/notionists/svg?${params.toString()}&_cb=${hashString(seed)}`;
 }
 
 /**
