@@ -1,18 +1,10 @@
 <script setup lang="ts">
-/**
- * game.vue - 游戏主页面
- *
- * 已集成说话动画系统：
- * - useTypewriter: AI 发言的逐字打字机效果
- * - TalkingAvatar: 头像嘴型动画（说话时切换）
- * - TalkingAvatarSmall: 聊天历史小头像
- */
-
 import { Moon, Sun, ChevronLeft } from "lucide-vue-next";
 import { computed, onMounted, ref, watch, nextTick } from "vue";
 import { useRouter } from "vue-router";
 
 import DialogArea from "~/components/game/DialogArea.vue";
+import VotingProgress from "~/components/game/VotingProgress.vue";
 import { Avatar, AvatarFallback } from "~/components/ui/avatar";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
@@ -34,6 +26,10 @@ const isProcessing = ref(false);
 const humanInput = ref("");
 const showRole = ref(false);
 const chatScrollRef = ref<HTMLElement | null>(null);
+
+// 投票状态
+const isWaitingForAI = ref(false);
+const voteInProgress = ref(false);
 
 // 当前发言者
 const currentPlayer = ref<Player | null>(null);
@@ -85,13 +81,21 @@ async function continueGame() {
     if (role === "Werewolf" && gameStore.nightActions.wolfTarget === undefined) return;
     if (role === "Guard" && gameStore.nightActions.guardTarget === undefined) return;
     if (role === "Witch") {
-      const canSave = !gameStore.roleAbilities.witchHealUsed && gameStore.nightActions.wolfTarget !== undefined;
+      const canSave =
+        !gameStore.roleAbilities.witchHealUsed && gameStore.nightActions.wolfTarget !== undefined;
       if (canSave || !gameStore.roleAbilities.witchPoisonUsed) return;
     }
   }
-  if (gameStore.phase === "HUNTER_SHOOT" && humanPlayer.value?.role === "Hunter" && gameStore.roleAbilities.hunterCanShoot) {
+  if (
+    gameStore.phase === "HUNTER_SHOOT" &&
+    humanPlayer.value?.role === "Hunter" &&
+    gameStore.roleAbilities.hunterCanShoot
+  ) {
     return;
   }
+
+  // 投票阶段：如果已经在进行中，不需要再次调用
+  if (gameStore.phase === "VOTE" && voteInProgress.value) return;
 
   if (isProcessing.value) return;
   isProcessing.value = true;
@@ -179,28 +183,59 @@ async function executeDaySpeech() {
 // ============ 投票 ============
 
 async function executeVote() {
-  const alivePlayers = gameStore.alivePlayers.filter((p) => !p.isHuman);
-  const llm = useLLM();
+  // 如果已经在投票中，不重复启动
+  if (voteInProgress.value) return;
 
-  for (const player of alivePlayers) {
+  voteInProgress.value = true;
+  isWaitingForAI.value = true;
+
+  // AI 玩家投票：逐个进行，每次响应后立即更新 UI
+  const aiPlayers = gameStore.alivePlayers.filter((p) => !p.isHuman);
+
+  for (const player of aiPlayers) {
+    // 检查是否应该中断投票（例如人类投完票后）
+    if (gameStore.isAllVoted) break;
+
     try {
-      const gameState = buildVoteContext(player);
       const targets = gameStore.alivePlayers
         .filter((p) => p.playerId !== player.playerId)
         .map((p) => p.seat);
 
-      const target = await llm.generateVote(gameState, targets);
+      const { generateVote } = useLLM();
+      const target = await generateVote(player.role, targets);
       gameStore.castVote(player.playerId, target);
     } catch (err) {
       console.error("AI vote error:", err);
+      // 错误时使用随机投票
       const targets = gameStore.alivePlayers
         .filter((p) => p.playerId !== player.playerId)
         .map((p) => p.seat);
-      if (targets.length > 0 && targets[0] !== undefined) {
-        gameStore.castVote(player.playerId, targets[0]!);
+      if (targets.length > 0) {
+        const randomTarget = targets[Math.floor(Math.random() * targets.length)];
+        if (randomTarget !== undefined) {
+          gameStore.castVote(player.playerId, randomTarget);
+        }
       }
     }
+
+    // 如果人类已经投完票，等待人类投票后结算
+    if (gameStore.humanPlayer && gameStore.votes[gameStore.humanPlayer.playerId] !== undefined) {
+      break;
+    }
   }
+
+  isWaitingForAI.value = false;
+
+  // 如果所有人都投完票，立即结算
+  if (gameStore.isAllVoted) {
+    await resolveVote();
+  }
+  // 否则由 handleVote 中的逻辑触发结算
+}
+
+// 结算投票
+async function resolveVote() {
+  voteInProgress.value = false;
 
   const result = gameStore.resolveVote();
 
@@ -222,6 +257,20 @@ async function executeVote() {
   }
 }
 
+// 人类投票处理
+function handleVote(seat: number) {
+  if (!humanPlayer.value) return;
+  gameStore.castVote(humanPlayer.value.playerId, seat);
+
+  // 检查是否所有人都投完票了
+  if (gameStore.isAllVoted && voteInProgress.value) {
+    // 如果 AI 还在等待，中断 AI 投票并立即结算
+    voteInProgress.value = false;
+    isWaitingForAI.value = false;
+    resolveVote();
+  }
+}
+
 // ============ 上下文构建 ============
 
 function buildSpeechContext(): string {
@@ -240,18 +289,6 @@ function buildSpeechContext(): string {
     } else {
       context += `${msg.playerName}: ${msg.content}\n`;
     }
-  });
-
-  return context;
-}
-
-function buildVoteContext(voter: { playerId: string; role: string; displayName: string }): string {
-  const alivePlayers = gameStore.players.filter((p) => p.alive);
-
-  let context = `【投票玩家】${voter.displayName} (${voter.role})\n\n`;
-  context += "【存活玩家】\n";
-  alivePlayers.forEach((p) => {
-    context += `${p.seat + 1}号位: ${p.displayName}\n`;
   });
 
   return context;
@@ -325,11 +362,6 @@ function handleNightAction(seat: number) {
   }
 }
 
-function handleVote(seat: number) {
-  if (!humanPlayer.value) return;
-  gameStore.castVote(humanPlayer.value.playerId, seat);
-}
-
 // ============ 人类行动判断 ============
 
 const canHumanAct = computed(() => {
@@ -381,10 +413,6 @@ function returnToLobby() {
 }
 
 // ============ 聊天历史滚动 ============
-
-const visibleMessages = computed(() => {
-  return gameStore.messages.filter((m) => !m.isSystem);
-});
 
 watch(
   () => gameStore.messages.length,
@@ -617,6 +645,40 @@ function renderPlayerMentions(text: string): string {
                     </template>
                   </div>
                 </ScrollArea>
+              </div>
+            </CardContent>
+          </Card>
+
+          <!-- 投票进度显示 -->
+          <Card v-if="gameStore.phase === 'VOTE'" class="mt-4">
+            <CardHeader class="pb-2">
+              <div class="flex items-center gap-2">
+                <span class="bg-destructive h-2 w-2 animate-pulse rounded-full" />
+                <CardTitle class="text-destructive text-sm">投票进行中</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <VotingProgress
+                :votes="gameStore.votes"
+                :players="gameStore.players"
+                :human-player-id="humanPlayer?.playerId"
+                :is-waiting="isWaitingForAI"
+              />
+
+              <!-- 人类投票提示 -->
+              <div
+                v-if="canHumanAct && !gameStore.votes[humanPlayer?.playerId ?? '']"
+                class="mt-4 text-center"
+              >
+                <p class="text-muted-foreground mb-2 text-sm">点击左侧玩家列表中的玩家进行投票</p>
+              </div>
+
+              <!-- AI 投票中提示 -->
+              <div v-if="isWaitingForAI && !canHumanAct" class="mt-4 text-center">
+                <p class="text-muted-foreground flex items-center justify-center gap-2 text-sm">
+                  <span class="bg-primary h-2 w-2 animate-pulse rounded-full" />
+                  AI 正在投票...
+                </p>
               </div>
             </CardContent>
           </Card>

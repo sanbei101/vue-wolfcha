@@ -95,6 +95,8 @@ export type GameState = {
   nightActions: NightActions;
   roleAbilities: RoleAbilities;
   votes: Record<string, number>;
+  voteReasons: Record<string, string>;
+  voteHistory: Record<number, Record<string, number>>;
   deaths: Array<{ seat: number; reason: DeathReason }>;
   winner: Alignment | null;
   seerResults: Array<{ targetSeat: number; isWolf: boolean }>;

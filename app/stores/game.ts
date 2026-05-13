@@ -30,6 +30,8 @@ function createInitialState(): GameState {
       hunterCanShoot: true,
     },
     votes: {},
+    voteReasons: {},
+    voteHistory: {} as Record<number, Record<string, number>>,
     deaths: [],
     winner: null,
     seerResults: [],
@@ -133,6 +135,12 @@ export const useGameStore = defineStore("game", {
       const human = this.humanPlayer;
       if (!human || !human.alive) return false;
       return this.votes[human.playerId] === undefined;
+    },
+
+    // 检查所有存活玩家是否都已投票
+    isAllVoted(): boolean {
+      const alivePlayers = this.alivePlayers;
+      return alivePlayers.every((p) => this.votes[p.playerId] !== undefined);
     },
 
     humanCanSelectPlayer(): boolean {
@@ -360,8 +368,11 @@ export const useGameStore = defineStore("game", {
 
     // ============ 投票 ============
 
-    castVote(voterId: string, targetSeat: number) {
+    castVote(voterId: string, targetSeat: number, reason?: string) {
       this.votes[voterId] = targetSeat;
+      if (reason !== undefined) {
+        this.voteReasons[voterId] = reason;
+      }
     },
 
     resolveVote(): number | null {
@@ -404,6 +415,17 @@ export const useGameStore = defineStore("game", {
       }
 
       return maxSeat;
+    },
+
+    // 清除投票（用于新的一天开始）
+    clearVotes() {
+      this.votes = {};
+      this.voteReasons = {};
+    },
+
+    // 记录投票历史
+    recordVoteHistory() {
+      this.voteHistory[this.day] = { ...this.votes };
     },
 
     // ============ 猎人开枪 ============
